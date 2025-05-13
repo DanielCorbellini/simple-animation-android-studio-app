@@ -67,7 +67,7 @@ public class SonicView extends View implements Runnable {
     public void run() {
         while (running) {
             try {
-                // Verifica se precisa mover no eixo X
+                // Verifica se precisa mover no eixo X. Se não precisar ele fica virado para direita
                 if (Math.abs(posX - targetX) > speed) {
                     if (posX < targetX) {
                         posX += speed;
@@ -126,6 +126,7 @@ public class SonicView extends View implements Runnable {
         canvas.drawBitmap(currentFrame, posX, posY, null);
     }
 
+    // Captura o clique do usuário
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
