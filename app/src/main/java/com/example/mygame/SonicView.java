@@ -10,49 +10,50 @@ import android.view.MotionEvent;
 import android.view.View;
 
 public class SonicView extends View implements Runnable {
+
+    // Frame de corrida
     private Bitmap[] frames;
+    // Frame parado
+    private Bitmap idleFrame;
+
     private int frameIndex = 0;
     private final int frameCount = 6;
     private int frameWidth;
+    private int frameHeight;
     private int posX = 0;
     private int posY;
-    private int speedX = 10;
+    private int targetX = 0;
+    private int targetY = 200;
+    private int speed = 40;
     private boolean facingRight = true;
     private Thread animationThread;
     private boolean running = false;
-    private boolean isMoving = false;
-    private long lastFrameChangeTime = 0;
-    private static final long FRAME_DELAY = 100; // 100ms entre cada frame
-
-    // Para controlar o toque longo
-    private boolean isTouching = false;
 
     public SonicView(Context context, AttributeSet attrs) {
         super(context, attrs);
         init();
     }
 
-    public SonicView(Context context) {
-        super(context);
-        init();
-    }
-
     private void init() {
         Bitmap spriteSheet = BitmapFactory.decodeResource(getResources(), R.drawable.sonic_walk);
-        if (spriteSheet != null) {
-            frameWidth = spriteSheet.getWidth() / frameCount;
-            int frameHeight = spriteSheet.getHeight();
-            frames = new Bitmap[frameCount];
+        frameWidth = spriteSheet.getWidth() / frameCount;
+        frameHeight = spriteSheet.getHeight();
 
-            // Criando os frames normais
-            for (int i = 0; i < frameCount; i++) {
-                frames[i] = Bitmap.createBitmap(spriteSheet, i * frameWidth, 0, frameWidth, frameHeight);
-            }
-
-            posY = 200;
-            startAnimation();
+        // Carrega os frames de movimento
+        frames = new Bitmap[frameCount];
+        for (int i = 0; i < frameCount; i++) {
+            frames[i] = Bitmap.createBitmap(spriteSheet, i * frameWidth, 0, frameWidth, frameHeight);
         }
+
+        // Carrega o frame parado
+        idleFrame = BitmapFactory.decodeResource(getResources(), R.drawable.sonic_stationary);
+
+        posY = 200;
+        targetX = posX;
+        targetY = posY;
+        startAnimation();
     }
+
 
     private void startAnimation() {
         if (animationThread == null || !animationThread.isAlive()) {
@@ -63,72 +64,41 @@ public class SonicView extends View implements Runnable {
     }
 
     @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        float touchX = event.getX();
-
-        switch (event.getAction()) {
-            case MotionEvent.ACTION_DOWN:
-                // Decide a direção com base na posição do toque
-                if (touchX < getWidth() / 2) {
-                    facingRight = false;
-                    speedX = -Math.abs(speedX); // Negativo para ir para esquerda
-                } else {
-                    facingRight = true;
-                    speedX = Math.abs(speedX); // Positivo para ir para direita
-                }
-                isMoving = true;
-                isTouching = true;
-                return true;
-
-            case MotionEvent.ACTION_UP:
-                // Para de mover após alguns passos se não estiver em toque longo
-                isTouching = false;
-                return true;
-        }
-        return super.onTouchEvent(event);
-    }
-
-    @Override
     public void run() {
         while (running) {
             try {
-                long currentTime = System.currentTimeMillis();
-
-                // Só move se estiver no estado de movimento
-                if (isMoving) {
-                    // Atualiza a posição
-                    posX += speedX;
-
-                    // Verifica os limites da tela
-                    if (posX <= 0) {
-                        posX = 0;
-                        // Opcionalmente, pode virar para direita quando atingir o limite esquerdo
-                        // facingRight = true;
-                        // speedX = Math.abs(speedX);
-                    } else if (posX + frameWidth >= getWidth()) {
-                        posX = getWidth() - frameWidth;
-                        // Opcionalmente, pode virar para esquerda quando atingir o limite direito
-                        // facingRight = false;
-                        // speedX = -Math.abs(speedX);
-                    }
-
-                    // Avança para o próximo frame com base no tempo
-                    if (currentTime - lastFrameChangeTime > FRAME_DELAY) {
-                        frameIndex = (frameIndex + 1) % frameCount;
-                        lastFrameChangeTime = currentTime;
-                    }
-
-                    // Se não estiver tocando a tela, para de andar após completar um ciclo
-                    if (!isTouching && frameIndex == 0) {
-                        isMoving = false;
+                // Verifica se precisa mover no eixo X
+                if (Math.abs(posX - targetX) > speed) {
+                    if (posX < targetX) {
+                        posX += speed;
+                        facingRight = true;
+                    } else if (posX > targetX) {
+                        posX -= speed;
+                        facingRight = false;
                     }
                 } else {
-                    // Quando não está se movendo, mantém o frame 0 (posição de parado)
-                    frameIndex = 0;
+                    posX = targetX; // Ajusta para a posição exata
                 }
 
+                // Verifica se precisa mover no eixo Y
+                if (Math.abs(posY - targetY) > speed) {
+                    if (posY < targetY) {
+                        posY += speed;
+                    } else if (posY > targetY) {
+                        posY -= speed;
+                    }
+                } else {
+                    posY = targetY; // Ajusta para a posição exata
+                }
+
+                // Atualiza o frame apenas se estiver se movendo
+                if (posX != targetX || posY != targetY) {
+                    frameIndex = (frameIndex + 1) % frameCount;
+                }
+
+                // Redesenha a tela
                 postInvalidate();
-                Thread.sleep(16); // Aproximadamente 60 FPS
+                Thread.sleep(100);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -138,22 +108,31 @@ public class SonicView extends View implements Runnable {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        if (frames != null && frameIndex < frames.length) {
-            Bitmap currentFrame = frames[frameIndex];
 
-            if (!facingRight) {
-                // Usar um cache para estas imagens invertidas melhoraria o desempenho
-                Matrix flipMatrix = new Matrix();
-                flipMatrix.preScale(-1, 1);
-                Bitmap flippedFrame = Bitmap.createBitmap(currentFrame, 0, 0,
-                        currentFrame.getWidth(), currentFrame.getHeight(),
-                        flipMatrix, false);
-                canvas.drawBitmap(flippedFrame, posX, posY, null);
-                flippedFrame.recycle(); // Liberar memória
-            } else {
-                canvas.drawBitmap(currentFrame, posX, posY, null);
-            }
+        Bitmap currentFrame;
+        if (posX == targetX && posY == targetY) {
+            currentFrame = idleFrame;
+        } else {
+            currentFrame = frames[frameIndex];
         }
+
+        // Espelha o frame se necessário
+        if (!facingRight && posX != targetX) {
+            Matrix flipMatrix = new Matrix();
+            flipMatrix.preScale(-1, 1);
+            currentFrame = Bitmap.createBitmap(currentFrame, 0, 0, currentFrame.getWidth(), currentFrame.getHeight(), flipMatrix, false);
+        }
+
+        canvas.drawBitmap(currentFrame, posX, posY, null);
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+            targetX = (int) event.getX() - frameWidth / 2;
+            targetY = (int) event.getY() - frameHeight / 2;
+        }
+        return true;
     }
 
     @Override
